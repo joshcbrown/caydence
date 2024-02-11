@@ -13,7 +13,7 @@ use tokio::{
     time::interval,
 };
 
-mod switcher;
+mod worker;
 
 fn is_image(f: &PathBuf) -> bool {
     f.extension().map_or(false, |ext| {
@@ -72,23 +72,6 @@ async fn loop_wallpapers(mut rx: Receiver<Terminate>) {
         interval.tick().await;
     }
 }
-
-// two data structures i'm thinking:
-// app: holds socket. setup_sockets and its logic will go here
-// switchdata (think of better name): will hold notify String, Duration of wallpaper
-// switcher: will hold Iterator<switchdata>, tx, rx
-//
-// the fundamental challenge here is thus:
-// the app needs to:
-// a) switch wallpapers every n seconds
-// b) respond to incoming socket messages that tell it to switch wallpapers/modes (pomo, regular)
-//
-// this can't be accomplished in a single thread, because if you try to accomplish a), you sleep
-// the thread, and then it can't respond to messages in b). so, then, where do you move the work
-// around in the threads? the best i've come up with is:
-// 1. setting a thread to wake up every n seconds and change wallpapers.
-//    before changing the wallpaper, it should check if it has received a termination signal.
-// 2. when an incoming message says to change to pomo, send the terminate signal a new thread
 
 async fn setup_sockets() -> Result<()> {
     // TODO: move this elsewhere
