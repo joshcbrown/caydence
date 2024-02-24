@@ -122,7 +122,6 @@ impl Worker {
                 notify(&format!("{:?}", pomo))
             }
 
-            println!("changing wallpaper, state is {:?}", self.pomo_state);
             change_wallpaper(current_job.filepath).unwrap();
 
             tokio::select! {
@@ -144,7 +143,6 @@ fn notify(body: &str) {
 // this needs to be outside of worker as it's used in the constructor
 fn generate_jobs(pomo: bool) -> Box<dyn Iterator<Item = Job>> {
     let images: Vec<_> = get_wallpapers("/home/josh/.config/sway/wallpapers".into()).collect();
-    dbg!(&images);
     let times: Box<dyn Iterator<Item = (Duration, Option<PomoState>)>> = if pomo {
         Box::new(
             [
