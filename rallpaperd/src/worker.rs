@@ -10,7 +10,7 @@ use tokio::{sync::mpsc::Receiver, time::sleep};
 
 fn is_image(f: &PathBuf) -> bool {
     f.extension().map_or(false, |ext| {
-        [".gif", ".png", ".jpg", ".jpeg"]
+        ["gif", "png", "jpg", "jpeg"]
             .into_iter()
             .any(|img_ext| img_ext == ext)
     })
@@ -39,40 +39,23 @@ fn change_wallpaper(image: PathBuf) -> Result<()> {
         .map(|_| ())
 }
 
-pub struct Job {
-    pub filepath: PathBuf,
-    pub sleep_dur: Duration,
+#[derive(Clone, Debug)]
+enum PomoState {
+    Work,
+    ShortBreak,
+    LongBreak,
+}
+
+struct Job {
+    filepath: PathBuf,
+    sleep_dur: Duration,
+    new_pomo_state: Option<PomoState>,
 }
 
 const WORK_SECS: u64 = 5;
 const SHORT_BREAK_SECS: u64 = 2;
 const LONG_BREAK_SECS: u64 = 3;
 const REGULAR_SECS: u64 = 6;
-
-fn generate_jobs(pomo: bool) -> Box<dyn Iterator<Item = Job>> {
-    let images: Vec<_> = get_wallpapers("/home/josh/.config/sway/wallpapers".into()).collect();
-    let times: Box<dyn Iterator<Item = Duration>> = if pomo {
-        Box::new(
-            [
-                Duration::from_secs(WORK_SECS),
-                Duration::from_secs(SHORT_BREAK_SECS),
-                Duration::from_secs(LONG_BREAK_SECS),
-            ]
-            .into_iter()
-            .cycle(),
-        )
-    } else {
-        Box::new(repeat(Duration::from_secs(REGULAR_SECS)))
-    };
-    Box::new(
-        times
-            .zip(images.into_iter().cycle())
-            .map(|(sleep_dur, filepath)| Job {
-                sleep_dur,
-                filepath,
-            }),
-    )
-}
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum WorkerMessage {
@@ -82,7 +65,7 @@ pub enum WorkerMessage {
 }
 
 pub struct Worker {
-    in_pomo: bool,
+    pomo_state: Option<PomoState>,
     start_time: Instant,
     job_iterator: Box<dyn Iterator<Item = Job>>,
     rx: Receiver<WorkerMessage>,
@@ -91,7 +74,7 @@ pub struct Worker {
 impl Worker {
     pub fn new(rx: Receiver<WorkerMessage>) -> Self {
         Self {
-            in_pomo: false,
+            pomo_state: None,
             start_time: Instant::now(),
             job_iterator: Box::new(generate_jobs(false)),
             rx,
@@ -101,9 +84,8 @@ impl Worker {
     fn handle_message(&mut self, msg: WorkerMessage) {
         match msg {
             WorkerMessage::TogglePomo => {
-                self.in_pomo = !self.in_pomo;
-                self.job_iterator = generate_jobs(self.in_pomo);
-                println!("switching pomo to {}", self.in_pomo)
+                self.job_iterator = generate_jobs(self.pomo_state.is_none());
+                self.pomo_state = None; // this will be overwritten in the next loop
             }
             WorkerMessage::Time => {
                 dbg!(self.start_time.elapsed());
@@ -115,8 +97,9 @@ impl Worker {
     pub async fn run(mut self) {
         loop {
             let current_job = self.job_iterator.next().unwrap();
+            self.pomo_state = current_job.new_pomo_state;
             self.start_time = Instant::now();
-            println!("changing wallpaper!");
+            println!("changing wallpaper, state is {:?}", self.pomo_state);
             change_wallpaper(current_job.filepath).unwrap();
 
             tokio::select! {
@@ -126,5 +109,58 @@ impl Worker {
                 }
             }
         }
+    }
+}
+fn generate_jobs(pomo: bool) -> Box<dyn Iterator<Item = Job>> {
+    let images: Vec<_> = get_wallpapers("/home/josh/.config/sway/wallpapers".into()).collect();
+    dbg!(&images);
+    let times: Box<dyn Iterator<Item = (Duration, Option<PomoState>)>> = if pomo {
+        Box::new(
+            [
+                (Duration::from_secs(WORK_SECS), Some(PomoState::Work)),
+                (
+                    Duration::from_secs(SHORT_BREAK_SECS),
+                    Some(PomoState::ShortBreak),
+                ),
+                (Duration::from_secs(WORK_SECS), Some(PomoState::Work)),
+                (
+                    Duration::from_secs(SHORT_BREAK_SECS),
+                    Some(PomoState::ShortBreak),
+                ),
+                (Duration::from_secs(WORK_SECS), Some(PomoState::Work)),
+                (
+                    Duration::from_secs(SHORT_BREAK_SECS),
+                    Some(PomoState::ShortBreak),
+                ),
+                (Duration::from_secs(WORK_SECS), Some(PomoState::Work)),
+                (
+                    Duration::from_secs(LONG_BREAK_SECS),
+                    Some(PomoState::LongBreak),
+                ),
+            ]
+            .into_iter()
+            .cycle(),
+        )
+    } else {
+        Box::new(repeat((Duration::from_secs(REGULAR_SECS), None)))
+    };
+    Box::new(times.zip(images.into_iter().cycle()).map(
+        |((sleep_dur, new_pomo_state), filepath)| Job {
+            sleep_dur,
+            filepath,
+            new_pomo_state,
+        },
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+    #[test]
+    fn image_extension_works() {
+        let ex = PathBuf::from_str("example.png").unwrap();
+        assert!(is_image(&ex))
     }
 }

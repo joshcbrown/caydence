@@ -8,14 +8,11 @@ mod worker;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let (tx_worker, rx_worker) = mpsc::channel(1);
+    let (tx_worker, rx_worker) = mpsc::channel(10);
 
-    // Spawn worker task
-    tokio::spawn(async move {
-        Worker::new(rx_worker).run().await;
-    });
+    tokio::spawn(Listener::new(tx_worker).unwrap().run());
 
-    Listener::new(tx_worker).unwrap().run();
+    Worker::new(rx_worker).run().await;
 
     Ok(())
 }

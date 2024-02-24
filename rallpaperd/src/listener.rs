@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::{
     io::Read,
     os::unix::net::{UnixListener, UnixStream},
@@ -23,10 +24,12 @@ async fn handle_connection(mut stream: UnixStream, tx: Sender<WorkerMessage>) {
         _ => None,
     };
     if let Some(msg) = worker_message {
-        tx.send(msg).await.unwrap()
+        tx.send(msg).await.unwrap();
+        write!(stream, "success").unwrap();
     } else {
-        println!("invalid message: {message}")
+        write!(stream, "invalid message: {message}").unwrap();
     }
+    stream.shutdown(std::net::Shutdown::Write).unwrap();
 }
 
 impl Listener {
@@ -42,7 +45,7 @@ impl Listener {
     pub async fn run(self) {
         for result in self.listener.incoming() {
             let stream = result.unwrap();
-            tokio::spawn(handle_connection(stream, self.tx_worker.clone()));
+            handle_connection(stream, self.tx_worker.clone()).await;
         }
     }
 }
