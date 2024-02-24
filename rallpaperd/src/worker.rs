@@ -126,9 +126,7 @@ impl Worker {
 
             tokio::select! {
                 Some(msg) = self.rx.recv() => self.handle_message(msg),
-                _ = sleep(current_job.sleep_dur) => {
-                    println!("waking up!");
-                }
+                _ = sleep(current_job.sleep_dur) => { }
             }
         }
     }
