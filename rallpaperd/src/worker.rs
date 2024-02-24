@@ -46,6 +46,16 @@ enum PomoState {
     LongBreak,
 }
 
+impl PomoState {
+    pub fn dur(&self) -> Duration {
+        match self {
+            PomoState::Work => Duration::from_secs(WORK_SECS),
+            PomoState::ShortBreak => Duration::from_secs(SHORT_BREAK_SECS),
+            PomoState::LongBreak => Duration::from_secs(LONG_BREAK_SECS),
+        }
+    }
+}
+
 struct Job {
     filepath: PathBuf,
     sleep_dur: Duration,
@@ -84,11 +94,20 @@ impl Worker {
     fn handle_message(&mut self, msg: WorkerMessage) {
         match msg {
             WorkerMessage::TogglePomo => {
+                // pomo state will be overwritten in the next iteration of the run loop,
+                // so there's no need to update it here
                 self.job_iterator = generate_jobs(self.pomo_state.is_none());
-                self.pomo_state = None; // this will be overwritten in the next loop
             }
             WorkerMessage::Time => {
-                dbg!(self.start_time.elapsed());
+                if let Some(pomo) = self.pomo_state.as_ref() {
+                    notify(&format!(
+                        "{:?}-{:?} remaining",
+                        pomo,
+                        pomo.dur() - self.start_time.elapsed()
+                    ))
+                } else {
+                    notify("not in pomo")
+                }
             }
             WorkerMessage::ChangeWallpaper => {}
         }
@@ -99,6 +118,10 @@ impl Worker {
             let current_job = self.job_iterator.next().unwrap();
             self.pomo_state = current_job.new_pomo_state;
             self.start_time = Instant::now();
+            if let Some(pomo) = self.pomo_state.as_ref() {
+                notify(&format!("{:?}", pomo))
+            }
+
             println!("changing wallpaper, state is {:?}", self.pomo_state);
             change_wallpaper(current_job.filepath).unwrap();
 
@@ -111,6 +134,14 @@ impl Worker {
         }
     }
 }
+
+fn notify(body: &str) {
+    libnotify::Notification::new("cadence", Some(body), None)
+        .show()
+        .unwrap()
+}
+
+// this needs to be outside of worker as it's used in the constructor
 fn generate_jobs(pomo: bool) -> Box<dyn Iterator<Item = Job>> {
     let images: Vec<_> = get_wallpapers("/home/josh/.config/sway/wallpapers".into()).collect();
     dbg!(&images);
