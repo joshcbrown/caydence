@@ -46,13 +46,17 @@ enum PomoState {
     LongBreak,
 }
 
-impl PomoState {
-    pub fn dur(&self) -> Duration {
-        match self {
-            PomoState::Work => Duration::from_secs(WORK_SECS),
-            PomoState::ShortBreak => Duration::from_secs(SHORT_BREAK_SECS),
-            PomoState::LongBreak => Duration::from_secs(LONG_BREAK_SECS),
-        }
+impl std::fmt::Display for PomoState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                PomoState::Work => "work",
+                PomoState::ShortBreak => "short break",
+                PomoState::LongBreak => "long break",
+            }
+        )
     }
 }
 
@@ -62,9 +66,9 @@ struct Job {
     new_pomo_state: Option<PomoState>,
 }
 
-const WORK_SECS: u64 = 5;
-const SHORT_BREAK_SECS: u64 = 2;
-const LONG_BREAK_SECS: u64 = 3;
+const WORK_SECS: u64 = 20;
+const SHORT_BREAK_SECS: u64 = 5;
+const LONG_BREAK_SECS: u64 = 15;
 const REGULAR_SECS: u64 = 6;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -77,7 +81,9 @@ pub enum WorkerMessage {
 pub struct Worker {
     pomo_state: Option<PomoState>,
     start_time: Instant,
+    sleep_dur: Duration,
     job_iterator: Box<dyn Iterator<Item = Job>>,
+    remain_in_loop: bool,
     rx: Receiver<WorkerMessage>,
 }
 
@@ -85,10 +91,17 @@ impl Worker {
     pub fn new(rx: Receiver<WorkerMessage>) -> Self {
         Self {
             pomo_state: None,
+            // ugly but this will be overwritten in the first loop
+            sleep_dur: Duration::from_secs(0),
             start_time: Instant::now(),
             job_iterator: Box::new(generate_jobs(false)),
+            remain_in_loop: true,
             rx,
         }
+    }
+
+    fn remaining(&self) -> Duration {
+        self.sleep_dur - self.start_time.elapsed()
     }
 
     fn handle_message(&mut self, msg: WorkerMessage) {
@@ -97,19 +110,17 @@ impl Worker {
                 // pomo state will be overwritten in the next iteration of the run loop,
                 // so there's no need to update it here
                 self.job_iterator = generate_jobs(self.pomo_state.is_none());
+                self.remain_in_loop = false;
             }
             WorkerMessage::Time => {
+                let remaining_str = format_duration(self.remaining());
                 if let Some(pomo) = self.pomo_state.as_ref() {
-                    notify(&format!(
-                        "{:?}-{:?} remaining",
-                        pomo,
-                        pomo.dur() - self.start_time.elapsed()
-                    ))
+                    notify(&format!("{pomo}—{remaining_str} remaining",))
                 } else {
-                    notify("not in pomo")
+                    notify(&format!("{remaining_str} remaining on current wallpaper"))
                 }
             }
-            WorkerMessage::ChangeWallpaper => {}
+            WorkerMessage::ChangeWallpaper => self.remain_in_loop = false,
         }
     }
 
@@ -118,18 +129,30 @@ impl Worker {
             let current_job = self.job_iterator.next().unwrap();
             self.pomo_state = current_job.new_pomo_state;
             self.start_time = Instant::now();
+            self.sleep_dur = current_job.sleep_dur;
+            self.remain_in_loop = true;
             if let Some(pomo) = self.pomo_state.as_ref() {
-                notify(&format!("{:?}", pomo))
+                notify(&format!("entering {pomo}"))
             }
 
             change_wallpaper(current_job.filepath).unwrap();
 
-            tokio::select! {
-                Some(msg) = self.rx.recv() => self.handle_message(msg),
-                _ = sleep(current_job.sleep_dur) => { }
+            while self.remain_in_loop {
+                // need this as self.rx.recv() borrows as mutable
+                let remaining = self.remaining();
+                tokio::select! {
+                    Some(msg) = self.rx.recv() => self.handle_message(msg),
+                    _ = sleep(remaining) => self.remain_in_loop = false,
+                }
             }
         }
     }
+}
+
+fn format_duration(duration: Duration) -> String {
+    let secs = duration.as_secs();
+
+    format!("{}m{}s", secs / 60, secs % 60)
 }
 
 fn notify(body: &str) {
@@ -185,6 +208,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+
     #[test]
     fn image_extension_works() {
         let ex = PathBuf::from_str("example.png").unwrap();
