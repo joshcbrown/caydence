@@ -5,7 +5,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::Context;
+use rand::seq::SliceRandom;
 use tokio::{sync::mpsc::Receiver, time::sleep};
 
 fn is_image(f: &PathBuf) -> bool {
@@ -16,15 +17,18 @@ fn is_image(f: &PathBuf) -> bool {
     })
 }
 
-fn get_wallpapers(wallpaper_dir: PathBuf) -> impl Iterator<Item = PathBuf> {
-    std::fs::read_dir(&wallpaper_dir)
+fn get_wallpapers(wallpaper_dir: PathBuf) -> Vec<PathBuf> {
+    let mut wallpapers: Vec<_> = std::fs::read_dir(&wallpaper_dir)
         .wrap_err_with(|| format!("wallpaper directory not found: {:?}", wallpaper_dir))
         .unwrap()
         .filter_map(|result| result.map(|entry| entry.path()).ok())
         .filter(is_image)
+        .collect();
+    wallpapers.shuffle(&mut rand::thread_rng());
+    wallpapers
 }
 
-fn change_wallpaper(image: PathBuf) -> Result<()> {
+fn change_wallpaper(image: PathBuf) {
     Command::new("swww")
         .args([
             "img",
@@ -36,7 +40,7 @@ fn change_wallpaper(image: PathBuf) -> Result<()> {
         ])
         .output()
         .wrap_err("swww failed to terminate")
-        .map(|_| ())
+        .unwrap();
 }
 
 #[derive(Clone, Debug)]
@@ -63,7 +67,7 @@ impl std::fmt::Display for PomoState {
 struct Job {
     filepath: PathBuf,
     sleep_dur: Duration,
-    new_pomo_state: Option<PomoState>,
+    pomo_state: Option<PomoState>,
 }
 
 const WORK_SECS: u64 = 20;
@@ -83,7 +87,7 @@ pub struct Worker {
     start_time: Instant,
     sleep_dur: Duration,
     job_iterator: Box<dyn Iterator<Item = Job>>,
-    remain_in_loop: bool,
+    remain_in_job: bool,
     rx: Receiver<WorkerMessage>,
 }
 
@@ -95,7 +99,7 @@ impl Worker {
             sleep_dur: Duration::from_secs(0),
             start_time: Instant::now(),
             job_iterator: Box::new(generate_jobs(false)),
-            remain_in_loop: true,
+            remain_in_job: true,
             rx,
         }
     }
@@ -110,39 +114,38 @@ impl Worker {
                 // pomo state will be overwritten in the next iteration of the run loop,
                 // so there's no need to update it here
                 self.job_iterator = generate_jobs(self.pomo_state.is_none());
-                self.remain_in_loop = false;
+                self.remain_in_job = false;
             }
             WorkerMessage::Time => {
                 let remaining_str = format_duration(self.remaining());
                 if let Some(pomo) = self.pomo_state.as_ref() {
-                    notify(&format!("{pomo}—{remaining_str} remaining",))
+                    notify(&format!("{remaining_str} remaining in {pomo}",))
                 } else {
                     notify(&format!("{remaining_str} remaining on current wallpaper"))
                 }
             }
-            WorkerMessage::ChangeWallpaper => self.remain_in_loop = false,
+            WorkerMessage::ChangeWallpaper => self.remain_in_job = false,
         }
     }
 
     pub async fn run(mut self) {
         loop {
             let current_job = self.job_iterator.next().unwrap();
-            self.pomo_state = current_job.new_pomo_state;
-            self.start_time = Instant::now();
-            self.sleep_dur = current_job.sleep_dur;
-            self.remain_in_loop = true;
+            (self.pomo_state, self.sleep_dur) = (current_job.pomo_state, current_job.sleep_dur);
             if let Some(pomo) = self.pomo_state.as_ref() {
                 notify(&format!("entering {pomo}"))
             }
 
-            change_wallpaper(current_job.filepath).unwrap();
+            change_wallpaper(current_job.filepath);
 
-            while self.remain_in_loop {
+            self.remain_in_job = true;
+            self.start_time = Instant::now();
+            while self.remain_in_job {
                 // need this as self.rx.recv() borrows as mutable
                 let remaining = self.remaining();
                 tokio::select! {
                     Some(msg) = self.rx.recv() => self.handle_message(msg),
-                    _ = sleep(remaining) => self.remain_in_loop = false,
+                    _ = sleep(remaining) => self.remain_in_job = false,
                 }
             }
         }
@@ -163,7 +166,7 @@ fn notify(body: &str) {
 
 // this needs to be outside of worker as it's used in the constructor
 fn generate_jobs(pomo: bool) -> Box<dyn Iterator<Item = Job>> {
-    let images: Vec<_> = get_wallpapers("/home/josh/.config/sway/wallpapers".into()).collect();
+    let images: Vec<_> = get_wallpapers("/home/josh/.config/sway/wallpapers".into());
     let times: Box<dyn Iterator<Item = (Duration, Option<PomoState>)>> = if pomo {
         Box::new(
             [
@@ -198,7 +201,7 @@ fn generate_jobs(pomo: bool) -> Box<dyn Iterator<Item = Job>> {
         |((sleep_dur, new_pomo_state), filepath)| Job {
             sleep_dur,
             filepath,
-            new_pomo_state,
+            pomo_state: new_pomo_state,
         },
     ))
 }
