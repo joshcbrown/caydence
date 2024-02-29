@@ -3,7 +3,7 @@ use std::{
     os::unix::net::UnixStream,
 };
 
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::{self, eyre, Context, Result};
 use listener::Listener;
 use tokio::sync::mpsc;
 use worker::Worker;
@@ -64,7 +64,9 @@ fn client_main(command: ClientCommand) -> Result<()> {
 
 #[tokio::main]
 async fn daemon_main() -> Result<()> {
-    libnotify::init("cadence").unwrap();
+    if let Err(s) = libnotify::init("cadence") {
+        return Err(eyre!("failed to initialise libnotify: {}", s));
+    }
     // note that we implicitly are assuming two daemons will never run concurrently here
     std::fs::remove_file("/tmp/rallpaper.sock")
         .unwrap_or_else(|_| println!("problem destructing socket file"));
@@ -73,6 +75,5 @@ async fn daemon_main() -> Result<()> {
     tokio::spawn(Listener::new(tx_worker).unwrap().run());
 
     Worker::new(rx_worker).run().await;
-
     Ok(())
 }
