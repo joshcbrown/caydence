@@ -30,13 +30,13 @@ fn get_wallpapers(wallpaper_dir: PathBuf) -> Vec<PathBuf> {
     wallpapers
 }
 
-fn change_wallpaper(image: PathBuf) {
+fn change_wallpaper(image: PathBuf, transition_fps: u8) {
     Command::new("swww")
         .args([
             "img",
             image.as_os_str().to_str().unwrap(),
             "--transition-fps",
-            "140",
+            &transition_fps.to_string(),
             "--transition-type",
             "center",
         ])
@@ -141,7 +141,7 @@ impl Worker {
                 notify(&format!("entering {pomo}"))
             }
 
-            change_wallpaper(current_job.filepath);
+            change_wallpaper(current_job.filepath, self.args.transition_fps);
 
             self.remain_in_job = true;
             self.start_time = Instant::now();

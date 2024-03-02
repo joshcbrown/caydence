@@ -23,7 +23,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// initialise daemon. see `hep daemon` for arguments.
+    /// initialise daemon. see `help daemon` for arguments.
     Daemon(DaemonArgs),
     /// pass a message to the daemon. see `help client` for possible values.
     Client {
@@ -36,6 +36,9 @@ enum Command {
 struct DaemonArgs {
     /// path to directory with wallpapers.
     wallpaper_dir: PathBuf,
+    /// framerate for wallpaper transition effect.
+    #[arg(short, long, default_value = "140")]
+    transition_fps: u8,
 }
 
 #[derive(Subcommand, Clone)]
