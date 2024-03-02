@@ -39,6 +39,16 @@ struct DaemonArgs {
     /// framerate for wallpaper transition effect.
     #[arg(short, long, default_value = "140")]
     transition_fps: u8,
+    #[arg(short, long, default_value = "20")]
+    regular_interval_mins: u8,
+    #[arg(long, default_value = "25")]
+    work_mins: u8,
+    #[arg(long, default_value = "5")]
+    short_break_mins: u8,
+    #[arg(long, default_value = "15")]
+    long_break_mins: u8,
+    #[arg(long, default_value = "4")]
+    cycles_before_break: u8,
 }
 
 #[derive(Subcommand, Clone)]

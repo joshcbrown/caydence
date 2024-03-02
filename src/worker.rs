@@ -72,11 +72,6 @@ struct Job {
     pomo_state: Option<PomoState>,
 }
 
-const WORK_SECS: u64 = 20;
-const SHORT_BREAK_SECS: u64 = 5;
-const LONG_BREAK_SECS: u64 = 15;
-const REGULAR_SECS: u64 = 6;
-
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum WorkerMessage {
     TogglePomo,
@@ -101,7 +96,7 @@ impl Worker {
             // ugly but this will be overwritten in the first loop
             sleep_dur: Duration::from_secs(0),
             start_time: Instant::now(),
-            job_iterator: Box::new(generate_jobs(false, &args.wallpaper_dir)),
+            job_iterator: Box::new(generate_jobs(false, &args)),
             remain_in_job: true,
             rx,
             args,
@@ -117,8 +112,7 @@ impl Worker {
             WorkerMessage::TogglePomo => {
                 // pomo state will be overwritten in the next iteration of the run loop,
                 // so there's no need to update it here
-                self.job_iterator =
-                    generate_jobs(self.pomo_state.is_none(), &self.args.wallpaper_dir);
+                self.job_iterator = generate_jobs(self.pomo_state.is_none(), &self.args);
                 self.remain_in_job = false;
             }
             WorkerMessage::Time => {
@@ -169,38 +163,38 @@ fn notify(body: &str) {
         .unwrap()
 }
 
+fn dur_from_mins(mins: u8) -> Duration {
+    Duration::from_secs(mins as u64 * 60)
+}
+
 // this needs to be outside of worker as it's used in the constructor
-fn generate_jobs(pomo: bool, wallpaper_dir: &PathBuf) -> Box<dyn Iterator<Item = Job>> {
-    let images = get_wallpapers(wallpaper_dir.clone());
+fn generate_jobs(pomo: bool, args: &DaemonArgs) -> Box<dyn Iterator<Item = Job>> {
+    let images = get_wallpapers(args.wallpaper_dir.clone());
     let times: Box<dyn Iterator<Item = (Duration, Option<PomoState>)>> = if pomo {
         Box::new(
             [
-                (Duration::from_secs(WORK_SECS), Some(PomoState::Work)),
+                (dur_from_mins(args.work_mins), Some(PomoState::Work)),
                 (
-                    Duration::from_secs(SHORT_BREAK_SECS),
+                    dur_from_mins(args.short_break_mins),
                     Some(PomoState::ShortBreak),
-                ),
-                (Duration::from_secs(WORK_SECS), Some(PomoState::Work)),
-                (
-                    Duration::from_secs(SHORT_BREAK_SECS),
-                    Some(PomoState::ShortBreak),
-                ),
-                (Duration::from_secs(WORK_SECS), Some(PomoState::Work)),
-                (
-                    Duration::from_secs(SHORT_BREAK_SECS),
-                    Some(PomoState::ShortBreak),
-                ),
-                (Duration::from_secs(WORK_SECS), Some(PomoState::Work)),
-                (
-                    Duration::from_secs(LONG_BREAK_SECS),
-                    Some(PomoState::LongBreak),
                 ),
             ]
             .into_iter()
-            .cycle(),
+            .cycle()
+            .take(args.cycles_before_break as usize - 1)
+            .chain([
+                (dur_from_mins(args.work_mins), Some(PomoState::Work)),
+                (
+                    dur_from_mins(args.long_break_mins),
+                    Some(PomoState::LongBreak),
+                ),
+            ]),
         )
     } else {
-        Box::new(repeat((Duration::from_secs(REGULAR_SECS), None)))
+        Box::new(repeat((
+            Duration::from_secs(args.regular_interval_mins as u64 * 60),
+            None,
+        )))
     };
     Box::new(times.zip(images.into_iter().cycle()).map(
         |((sleep_dur, new_pomo_state), filepath)| Job {
