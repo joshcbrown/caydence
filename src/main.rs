@@ -1,9 +1,10 @@
 use std::{
     io::{Read, Write},
     os::unix::net::UnixStream,
+    path::PathBuf,
 };
 
-use color_eyre::eyre::{self, eyre, Context, Result};
+use color_eyre::eyre::{eyre, Context, Result};
 use listener::Listener;
 use tokio::sync::mpsc;
 use worker::Worker;
@@ -11,7 +12,7 @@ use worker::Worker;
 mod listener;
 mod worker;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -20,26 +21,39 @@ struct Cli {
     command: Command,
 }
 
-#[derive(Subcommand, Clone)]
+#[derive(Subcommand)]
 enum Command {
-    Daemon,
+    /// initialise daemon. see `hep daemon` for arguments.
+    Daemon(DaemonArgs),
+    /// pass a message to the daemon. see `help client` for possible values.
     Client {
         #[command(subcommand)]
         client_command: ClientCommand,
     },
 }
 
+#[derive(Args)]
+struct DaemonArgs {
+    /// path to directory with wallpapers.
+    wallpaper_dir: PathBuf,
+}
+
 #[derive(Subcommand, Clone)]
 enum ClientCommand {
+    /// switch between pomodoro cycles and 20-min intervals.
     Toggle,
-    Pomo,
-    SkipWallpaper,
+    /// query the daemon for time remaining in current cycle.
+    Time,
+    /// skip current cycle, including the currently running pomo
+    /// if applicable.
+    Skip,
 }
 
 fn main() -> Result<()> {
+    color_eyre::install()?;
     let cli = Cli::parse();
     match cli.command {
-        Command::Daemon => daemon_main(),
+        Command::Daemon(args) => daemon_main(args),
         Command::Client { client_command } => client_main(client_command),
     }
 }
@@ -49,8 +63,8 @@ fn client_main(command: ClientCommand) -> Result<()> {
         UnixStream::connect("/tmp/rallpaper.sock").wrap_err("client cannot connect to daemon")?;
     let message = match command {
         ClientCommand::Toggle => "toggle",
-        ClientCommand::Pomo => "pomo",
-        ClientCommand::SkipWallpaper => "change",
+        ClientCommand::Time => "time",
+        ClientCommand::Skip => "skip",
     };
     write!(conn, "{}", message).wrap_err("client failed to write to daemon socket")?;
     conn.shutdown(std::net::Shutdown::Write)
@@ -63,17 +77,20 @@ fn client_main(command: ClientCommand) -> Result<()> {
 }
 
 #[tokio::main]
-async fn daemon_main() -> Result<()> {
+async fn daemon_main(args: DaemonArgs) -> Result<()> {
     if let Err(s) = libnotify::init("cadence") {
         return Err(eyre!("failed to initialise libnotify: {}", s));
     }
-    // note that we implicitly are assuming two daemons will never run concurrently here
+    if !args.wallpaper_dir.is_dir() {
+        return Err(eyre!("{:?} is not a directory", args.wallpaper_dir));
+    }
+    // FIX: check for daemon already running
     std::fs::remove_file("/tmp/rallpaper.sock")
         .unwrap_or_else(|_| println!("problem destructing socket file"));
     let (tx_worker, rx_worker) = mpsc::channel(10);
 
     tokio::spawn(Listener::new(tx_worker).unwrap().run());
 
-    Worker::new(rx_worker).run().await;
+    Worker::new(rx_worker, args).run().await;
     Ok(())
 }

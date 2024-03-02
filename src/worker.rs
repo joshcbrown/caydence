@@ -9,6 +9,8 @@ use color_eyre::eyre::Context;
 use rand::seq::SliceRandom;
 use tokio::{sync::mpsc::Receiver, time::sleep};
 
+use crate::DaemonArgs;
+
 fn is_image(f: &PathBuf) -> bool {
     f.extension().map_or(false, |ext| {
         ["gif", "png", "jpg", "jpeg"]
@@ -79,7 +81,7 @@ const REGULAR_SECS: u64 = 6;
 pub enum WorkerMessage {
     TogglePomo,
     Time,
-    ChangeWallpaper,
+    Skip,
 }
 
 pub struct Worker {
@@ -89,18 +91,20 @@ pub struct Worker {
     job_iterator: Box<dyn Iterator<Item = Job>>,
     remain_in_job: bool,
     rx: Receiver<WorkerMessage>,
+    args: DaemonArgs,
 }
 
 impl Worker {
-    pub fn new(rx: Receiver<WorkerMessage>) -> Self {
+    pub fn new(rx: Receiver<WorkerMessage>, args: DaemonArgs) -> Self {
         Self {
             pomo_state: None,
             // ugly but this will be overwritten in the first loop
             sleep_dur: Duration::from_secs(0),
             start_time: Instant::now(),
-            job_iterator: Box::new(generate_jobs(false)),
+            job_iterator: Box::new(generate_jobs(false, &args.wallpaper_dir)),
             remain_in_job: true,
             rx,
+            args,
         }
     }
 
@@ -113,7 +117,8 @@ impl Worker {
             WorkerMessage::TogglePomo => {
                 // pomo state will be overwritten in the next iteration of the run loop,
                 // so there's no need to update it here
-                self.job_iterator = generate_jobs(self.pomo_state.is_none());
+                self.job_iterator =
+                    generate_jobs(self.pomo_state.is_none(), &self.args.wallpaper_dir);
                 self.remain_in_job = false;
             }
             WorkerMessage::Time => {
@@ -124,7 +129,7 @@ impl Worker {
                     notify(&format!("{remaining_str} remaining on current wallpaper"))
                 }
             }
-            WorkerMessage::ChangeWallpaper => self.remain_in_job = false,
+            WorkerMessage::Skip => self.remain_in_job = false,
         }
     }
 
@@ -165,8 +170,8 @@ fn notify(body: &str) {
 }
 
 // this needs to be outside of worker as it's used in the constructor
-fn generate_jobs(pomo: bool) -> Box<dyn Iterator<Item = Job>> {
-    let images: Vec<_> = get_wallpapers("/home/josh/.config/sway/wallpapers".into());
+fn generate_jobs(pomo: bool, wallpaper_dir: &PathBuf) -> Box<dyn Iterator<Item = Job>> {
+    let images = get_wallpapers(wallpaper_dir.clone());
     let times: Box<dyn Iterator<Item = (Duration, Option<PomoState>)>> = if pomo {
         Box::new(
             [

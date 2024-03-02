@@ -18,7 +18,7 @@ async fn handle_connection(mut stream: UnixStream, tx: Sender<WorkerMessage>) {
     let mut message = String::new();
     stream.read_to_string(&mut message).unwrap();
     let worker_message = match message.as_str() {
-        "change" => Some(WorkerMessage::ChangeWallpaper),
+        "skip" => Some(WorkerMessage::Skip),
         "toggle" => Some(WorkerMessage::TogglePomo),
         "time" => Some(WorkerMessage::Time),
         _ => None,
