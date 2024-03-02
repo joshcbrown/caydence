@@ -9,6 +9,11 @@ it switches the wallpapers in two manners:
 - according to the [pomodoro](https://en.wikipedia.org/wiki/Pomodoro_Technique) method.
   - wallpaper switches are announced via libnotify when in this mode.
 
+## disclaimer
+
+the tool is best used when you have your wallpaper in sight as you work. for those that don't use gaps/blur,
+i suggest looking elsewhere for a dedicated timer app (might i suggest [pogodoro](https://github.com/joshcbrown/pogodoro)? :P)
+
 ## usage
 
 https://github.com/joshcbrown/caydence/assets/80245312/3a3f5774-7e48-468b-9ed8-a43b927ca84f
