@@ -32,11 +32,11 @@ client commands are given keybinds. in my sway config, i have:
 
 ```
 exec swww init
-exec ~/.cargo/bin/caydence
+exec ~/.cargo/bin/caydence daemon ~/.config/sway/wallpapers/
 
 bindsym $mod+p exec ~/.cargo/bin/caydence client toggle
-bindsym $mod+x exec ~/.cargo/gin/caydence client skip
-bindsym $mod+t exec ~/.cabal/bin/caydence client time
+bindsym $mod+x exec ~/.cargo/bin/caydence client skip
+bindsym $mod+t exec ~/.cargo/bin/caydence client time
 ```
 
 ## install
