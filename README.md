@@ -11,6 +11,8 @@ it switches the wallpapers in two manners:
 
 ## usage
 
+https://github.com/joshcbrown/caydence/assets/80245312/3a3f5774-7e48-468b-9ed8-a43b927ca84f
+
 to get started, run `caydence daemon <wallpaper directory>`. this will prompt the daemon to switch wallpapers every 20 minutes.
 you may want to pipe stdout to a log file, e.g. `caydence daemon &> /tmp/caydence.log`.
 
