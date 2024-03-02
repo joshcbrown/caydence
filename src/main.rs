@@ -39,14 +39,19 @@ struct DaemonArgs {
     /// framerate for wallpaper transition effect.
     #[arg(short, long, default_value = "140")]
     transition_fps: u8,
+    /// number of minutes between wallpaper switches in default mode.
     #[arg(short, long, default_value = "20")]
     regular_interval_mins: u8,
+    /// number of minutes per pomodoro work cycle.
     #[arg(long, default_value = "25")]
     work_mins: u8,
+    /// number of minutes per pomodoro short break cycle.
     #[arg(long, default_value = "5")]
     short_break_mins: u8,
+    /// number of minutes per pomodoro long break cycle.
     #[arg(long, default_value = "15")]
     long_break_mins: u8,
+    /// number of pomodoro work cycles before a long break.
     #[arg(long, default_value = "4")]
     cycles_before_break: u8,
 }
@@ -91,7 +96,7 @@ fn client_main(command: ClientCommand) -> Result<()> {
 
 #[tokio::main]
 async fn daemon_main(args: DaemonArgs) -> Result<()> {
-    if let Err(s) = libnotify::init("cadence") {
+    if let Err(s) = libnotify::init("caydence") {
         return Err(eyre!("failed to initialise libnotify: {}", s));
     }
     if !args.wallpaper_dir.is_dir() {

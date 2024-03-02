@@ -158,7 +158,7 @@ fn format_duration(duration: Duration) -> String {
 }
 
 fn notify(body: &str) {
-    libnotify::Notification::new("cadence", Some(body), None)
+    libnotify::Notification::new("caydence", Some(body), None)
         .show()
         .unwrap()
 }
