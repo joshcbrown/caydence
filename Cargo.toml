@@ -2,6 +2,13 @@
 name = "caydence"
 version = "0.1.0"
 edition = "2021"
+authors = ["Josh Brown"]
+description = "a wallpaper switching utility with pomodoro capabilities"
+readme = "README.md"
+repository = "https://github.com/joshcbrown/caydence"
+license = "MIT"
+keywords = ["wallpaper", "swww", "command-line"]
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
