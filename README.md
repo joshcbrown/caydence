@@ -31,10 +31,12 @@ the idea is that the daemon is started in a launch script on your wm/dm, and the
 client commands are given keybinds. in my sway config, i have:
 
 ```
-exec-once ~/.cargo/bin/caydence
+exec swww init
+exec ~/.cargo/bin/caydence
+
 bindsym $mod+p exec ~/.cargo/bin/caydence client toggle
-bindsym $mod+x exex ~/.cargo/gin/caydence client skip
-bindsym $mod+t exec ~/.cabal/bin/caydcence client time
+bindsym $mod+x exec ~/.cargo/gin/caydence client skip
+bindsym $mod+t exec ~/.cabal/bin/caydence client time
 ```
 
 ## install
