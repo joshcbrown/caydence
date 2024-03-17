@@ -18,3 +18,8 @@ color-eyre = { version = "0.6.2", default-features = false }
 tokio = { version = "1.36.0", features = ["full"] }
 libnotify = "1.0.3"
 clap = { version = "4.5.1", features = ["derive"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
