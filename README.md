@@ -46,3 +46,19 @@ only be run on wayland). an error message
 will be printed if it isn't found on the path when running the daemon.
 
 to install, run `cargo install caydence`.
+
+### nix flake
+
+`caydence` is a nix flake, so if you're running flakes on nixOS you can install it via
+adding it to your inputs:
+```nix
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    #...
+    caydence.url = "github:joshcbrown/caydence";
+  };
+```
+
+and then adding it to a list of packages via `caydence.packages.${pkgs.system}.default`.
+
+i'm pretty sure this is total overkill, but i'm having fun so
