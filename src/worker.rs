@@ -1,6 +1,6 @@
 use std::{
     iter::repeat,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
     time::{Duration, Instant},
 };
@@ -11,7 +11,7 @@ use tokio::{sync::mpsc::Receiver, time::sleep};
 
 use crate::DaemonArgs;
 
-fn is_image(f: &PathBuf) -> bool {
+fn is_image(f: &Path) -> bool {
     f.extension().map_or(false, |ext| {
         ["gif", "png", "jpg", "jpeg"]
             .into_iter()
@@ -24,7 +24,7 @@ fn get_wallpapers(wallpaper_dir: PathBuf) -> Vec<PathBuf> {
         .wrap_err_with(|| format!("wallpaper directory not found: {:?}", wallpaper_dir))
         .unwrap()
         .filter_map(|result| result.map(|entry| entry.path()).ok())
-        .filter(is_image)
+        .filter(|pb| is_image(pb))
         .collect();
     wallpapers.shuffle(&mut rand::thread_rng());
     wallpapers
@@ -114,6 +114,9 @@ impl Worker {
                 // so there's no need to update it here
                 self.job_iterator = generate_jobs(self.pomo_state.is_none(), &self.args);
                 self.remain_in_job = false;
+                if self.pomo_state.is_some() {
+                    notify("exiting pomo");
+                }
             }
             WorkerMessage::Time => {
                 let remaining_str = format_duration(self.remaining());
@@ -181,14 +184,15 @@ fn generate_jobs(pomo: bool, args: &DaemonArgs) -> Box<dyn Iterator<Item = Job>>
             ]
             .into_iter()
             .cycle()
-            .take(args.cycles_before_break as usize - 1)
+            .take((args.cycles_before_break as usize - 1) * 2)
             .chain([
                 (dur_from_mins(args.work_mins), Some(PomoState::Work)),
                 (
                     dur_from_mins(args.long_break_mins),
                     Some(PomoState::LongBreak),
                 ),
-            ]),
+            ])
+            .cycle(),
         )
     } else {
         Box::new(repeat((
