@@ -65,6 +65,8 @@ enum ClientCommand {
     /// skip current cycle, including the currently running pomo
     /// if applicable.
     Skip,
+    /// pause the current cycle.
+    Pause,
 }
 
 fn main() -> Result<()> {
@@ -83,6 +85,7 @@ fn client_main(command: ClientCommand) -> Result<()> {
         ClientCommand::Toggle => "toggle",
         ClientCommand::Time => "time",
         ClientCommand::Skip => "skip",
+        ClientCommand::Pause => "pause",
     };
     write!(conn, "{}", message).wrap_err("client failed to write to daemon socket")?;
     conn.shutdown(std::net::Shutdown::Write)

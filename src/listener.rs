@@ -7,20 +7,21 @@ use std::{
 use color_eyre::eyre::{Context, Result};
 use tokio::sync::mpsc::Sender;
 
-use crate::worker::WorkerMessage;
+use crate::ClientCommand;
 
 pub struct Listener {
-    tx_worker: Sender<WorkerMessage>,
+    tx_worker: Sender<ClientCommand>,
     listener: UnixListener,
 }
 
-async fn handle_connection(mut stream: UnixStream, tx: Sender<WorkerMessage>) {
+async fn handle_connection(mut stream: UnixStream, tx: Sender<ClientCommand>) {
     let mut message = String::new();
     stream.read_to_string(&mut message).unwrap();
     let worker_message = match message.as_str() {
-        "skip" => Some(WorkerMessage::Skip),
-        "toggle" => Some(WorkerMessage::TogglePomo),
-        "time" => Some(WorkerMessage::Time),
+        "skip" => Some(ClientCommand::Skip),
+        "toggle" => Some(ClientCommand::Toggle),
+        "time" => Some(ClientCommand::Time),
+        "pause" => Some(ClientCommand::Pause),
         _ => None,
     };
     if let Some(msg) = worker_message {
@@ -33,7 +34,7 @@ async fn handle_connection(mut stream: UnixStream, tx: Sender<WorkerMessage>) {
 }
 
 impl Listener {
-    pub fn new(tx_worker: Sender<WorkerMessage>) -> Result<Self> {
+    pub fn new(tx_worker: Sender<ClientCommand>) -> Result<Self> {
         let listener = UnixListener::bind("/tmp/rallpaper.sock")
             .context("couldn't establish message handler connection")?;
         Ok(Self {

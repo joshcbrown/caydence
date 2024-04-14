@@ -9,7 +9,7 @@ use color_eyre::eyre::Context;
 use rand::seq::SliceRandom;
 use tokio::{sync::mpsc::Receiver, time::sleep};
 
-use crate::DaemonArgs;
+use crate::{ClientCommand, DaemonArgs};
 
 fn is_image(f: &Path) -> bool {
     f.extension().map_or(false, |ext| {
@@ -72,25 +72,21 @@ struct Job {
     pomo_state: Option<PomoState>,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum WorkerMessage {
-    TogglePomo,
-    Time,
-    Skip,
-}
-
 pub struct Worker {
     pomo_state: Option<PomoState>,
     start_time: Instant,
+    paused: Option<TimeRemaining>,
     sleep_dur: Duration,
     job_iterator: Box<dyn Iterator<Item = Job>>,
     remain_in_job: bool,
-    rx: Receiver<WorkerMessage>,
+    rx: Receiver<ClientCommand>,
     args: DaemonArgs,
 }
 
+struct TimeRemaining(Duration);
+
 impl Worker {
-    pub fn new(rx: Receiver<WorkerMessage>, args: DaemonArgs) -> Self {
+    pub fn new(rx: Receiver<ClientCommand>, args: DaemonArgs) -> Self {
         Self {
             pomo_state: None,
             // ugly but this will be overwritten in the first loop
@@ -98,27 +94,46 @@ impl Worker {
             start_time: Instant::now(),
             job_iterator: Box::new(generate_jobs(false, &args)),
             remain_in_job: true,
+            paused: None,
             rx,
             args,
         }
     }
 
     fn remaining(&self) -> Duration {
-        self.sleep_dur - self.start_time.elapsed()
+        if let Some(TimeRemaining(t)) = self.paused {
+            t
+        } else {
+            self.sleep_dur - self.start_time.elapsed()
+        }
     }
 
-    fn handle_message(&mut self, msg: WorkerMessage) {
+    fn skip(&mut self) {
+        self.remain_in_job = false;
+        self.paused = None;
+    }
+
+    fn handle_message(&mut self, msg: ClientCommand) {
         match msg {
-            WorkerMessage::TogglePomo => {
+            ClientCommand::Pause => {
+                if let Some(TimeRemaining(t)) = self.paused {
+                    self.start_time = Instant::now() - t;
+                    notify("resuming");
+                } else {
+                    self.paused = Some(TimeRemaining(self.sleep_dur - self.start_time.elapsed()));
+                    notify("pausing")
+                }
+            }
+            ClientCommand::Toggle => {
                 // pomo state will be overwritten in the next iteration of the run loop,
                 // so there's no need to update it here
                 self.job_iterator = generate_jobs(self.pomo_state.is_none(), &self.args);
-                self.remain_in_job = false;
+                self.skip();
                 if self.pomo_state.is_some() {
                     notify("exiting pomo");
                 }
             }
-            WorkerMessage::Time => {
+            ClientCommand::Time => {
                 let remaining_str = format_duration(self.remaining());
                 if let Some(pomo) = self.pomo_state.as_ref() {
                     notify(&format!("{remaining_str} remaining in {pomo}",))
@@ -126,7 +141,7 @@ impl Worker {
                     notify(&format!("{remaining_str} remaining on current wallpaper"))
                 }
             }
-            WorkerMessage::Skip => self.remain_in_job = false,
+            ClientCommand::Skip => self.skip(),
         }
     }
 
@@ -143,6 +158,12 @@ impl Worker {
             self.remain_in_job = true;
             self.start_time = Instant::now();
             while self.remain_in_job {
+                if self.paused.is_some() {
+                    if let Some(msg) = self.rx.recv().await {
+                        self.handle_message(msg)
+                    }
+                    continue;
+                }
                 // need this as self.rx.recv() borrows as mutable
                 let remaining = self.remaining();
                 tokio::select! {
