@@ -105,7 +105,7 @@ async fn daemon_main(args: DaemonArgs) -> Result<()> {
     if !args.wallpaper_dir.is_dir() {
         return Err(eyre!("{:?} is not a directory", args.wallpaper_dir));
     }
-    // FIX: check for daemon already running
+
     std::fs::remove_file("/tmp/rallpaper.sock")
         .unwrap_or_else(|_| println!("problem destructing socket file"));
     let (tx_worker, rx_worker) = mpsc::channel(10);

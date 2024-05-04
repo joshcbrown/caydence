@@ -117,10 +117,11 @@ impl Worker {
         match msg {
             ClientCommand::Pause => {
                 if let Some(TimeRemaining(t)) = self.paused {
-                    self.start_time = Instant::now() - t;
+                    self.start_time = Instant::now() - self.sleep_dur + t;
+                    self.paused = None;
                     notify("resuming");
                 } else {
-                    self.paused = Some(TimeRemaining(self.sleep_dur - self.start_time.elapsed()));
+                    self.paused = Some(TimeRemaining(self.remaining()));
                     notify("pausing")
                 }
             }
@@ -154,7 +155,6 @@ impl Worker {
             }
 
             change_wallpaper(current_job.filepath, self.args.transition_fps);
-
             self.remain_in_job = true;
             self.start_time = Instant::now();
             while self.remain_in_job {
